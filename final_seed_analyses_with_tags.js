@@ -1,3 +1,65 @@
+
+app.get('/:dest/:id', async (req, res) => {
+    const modelName = req.params.dest.toLowerCase();
+    const Model = modelMap[modelName];
+    const populateFields = populateMap[modelName] || [];
+
+    if (!Model) {
+        return res.status(404).send('404 not found.');
+    }
+
+    const { id } = req.params;
+
+    // ✅ Handle ?children=true to return related data
+    if (req.query.children === 'true') {
+        try {
+            switch (modelName) {
+                case 'units': {
+                    const decisionSpaces = await decisionSpace.find({ unitId: id }, '_id name');
+                    return res.json({ decisionSpaces });
+                }
+                case 'decisionspaces': {
+                    const categories = await category.find({ decisionSpaceId: id }, '_id name');
+                    return res.json({ categories });
+                }
+                case 'categories': {
+                    const analysesList = await analysis.find({ categoryId: id }, '_id name');
+                    return res.json({ analyses: analysesList });
+                }
+                case 'analyses': {
+                    const foundAnalysis = await analysis.findById(id);
+                    if (!foundAnalysis) return res.status(404).json({ error: 'Analysis not found' });
+
+                    if (foundAnalysis.multipleScenarios && foundAnalysis.scenarios?.length > 0) {
+                        return res.json({ scenarios: foundAnalysis.scenarios });
+                    } else {
+                        return res.json({ message: 'No multiple scenarios for this analysis.' });
+                    }
+                }
+                default:
+                    return res.status(400).json({ error: 'Unsupported destination type' });
+            }
+        } catch (err) {
+            console.error(err);
+            return res.status(500).json({ error: 'Server error' });
+        }
+    }
+
+    // ✅ Default behavior: render show.ejs with populated data
+    try {
+        let query = Model.findById(id);
+        populateFields.forEach(field => {
+            query = query.populate(field);
+        });
+        const data = await query.exec();
+        res.render(`${modelName}/show`, { [modelName]: data });
+    } catch (err) {
+        console.error(err);
+        res.status(500).send('Internal server error');
+    }
+});
+
+
 const analyses = [
   {
     "_id": "28ec82d8b1c14a1c8a6464c1",
